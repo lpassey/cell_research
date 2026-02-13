@@ -4,26 +4,42 @@ import time
 from modules.multithread.SelectionSortCell import SelectionSortCell
 from modules.multithread.BubbleSortCell import BubbleSortCell
 from modules.multithread.MergeSortCell import MergeSortCell
+from modules.multithread.StatusProbe import StatusProbe
+from modules.multithread.CellGroup import CellGroup, CellStatus, GroupStatus  # added to make it run
 
 
 #VALUE_LIST = [28, 34, 6, 20, 7, 89, 34, 18, 29, 51]
 VALUE_LIST = range(50,0,-1)
 
+status_probe = StatusProbe()
+
 def create_cells_based_on_value_list(value_list, cell_type, threadLock):
     if len(value_list) == 0:
         return []
     cells = []
+    # looks like boundaries are tuples, for whatever reason
     for i in range(0, len(value_list)):
         cell = None
         if cell_type == "selection":
-            cell = SelectionSortCell(i + 1, VALUE_LIST[i], threadLock, i, cells, 0, len(VALUE_LIST) - 1)
+            cell = SelectionSortCell(i + 1, VALUE_LIST[i], threadLock, (i,1), cells, (0, 1), (len(VALUE_LIST) - 1, 1)
+                                    , status_probe, disable_visualization=True  # added due to new signature
+                                     )
         if cell_type == "bubble":
-            cell = BubbleSortCell(i + 1, VALUE_LIST[i], threadLock, i, cells, 0, len(VALUE_LIST) - 1)
+            cell = BubbleSortCell(i + 1, VALUE_LIST[i], threadLock, (i,1), cells, (0,1), (len(VALUE_LIST) - 1, 1)
+                                  , status_probe, disable_visualization=True    # add due to new signature
+                                  )
         if cell_type == "merge":
-            cell = MergeSortCell(i + 1, VALUE_LIST[i], threadLock, i, cells, 0, len(VALUE_LIST) - 1)
+            cell = MergeSortCell(i + 1, VALUE_LIST[i], threadLock, i, cells, 0
+#                                 , len(VALUE_LIST) - 1
+                                 )
         if cell:
             cells.append(cell)
 
+# start block -- required to make this thing runnable.
+    cell_group = CellGroup(cells, cells, 0, (0,1),(len(value_list) - 1, 1), GroupStatus.ACTIVE, threadLock, 1000000000, 1000000000)
+    for cell in cells:
+        cell.group = cell_group
+# end block
     return cells 
 
 def print_current_list(cells):
@@ -58,18 +74,30 @@ def get_pass_in_args(argv):
     
     return cell_type
 
+def get_current_monotonicity(cells, lock ):    # calculate the total inversion count (TIC) of the list.
+    monotonicity_value = 0
+    with lock:
+        prev_cell = cells[0]
+        for c in cells:
+            if c.value < prev_cell.value:
+                monotonicity_value += 1
+            prev_cell = c
+    return monotonicity_value
+
 
 def main(argv):
-    cell_type = get_pass_in_args(argv)
+    cell_type = 'bubble'    # get_pass_in_args(argv)
     threadLock = threading.Lock()
     cells = create_cells_based_on_value_list(VALUE_LIST, cell_type, threadLock)
     threadLock.acquire()
     activation_cells(cells)
     threadLock.release()
-    while True:
+    while 0 != get_current_monotonicity(cells, threadLock):
+#    while True:        # will create an infinite loop, as there is no termination condition.
         print_current_list(cells)
         time.sleep(0.0001)
-        
+    for c in cells:     # kill active threads
+        c.status = CellStatus.INACTIVE
 
 if __name__ == "__main__":
     main(sys.argv[1:])
