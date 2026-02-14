@@ -1,17 +1,26 @@
 import sys, getopt
 import threading
 import time
+from modules.multithread.MultiThreadCell import CellStatus
 from modules.multithread.SelectionSortCell import SelectionSortCell
 from modules.multithread.BubbleSortCell import BubbleSortCell
 from modules.multithread.MergeSortCell import MergeSortCell
 from modules.multithread.StatusProbe import StatusProbe
-from modules.multithread.CellGroup import CellGroup, CellStatus, GroupStatus  # added to make it run
 
 
 #VALUE_LIST = [28, 34, 6, 20, 7, 89, 34, 18, 29, 51]
 VALUE_LIST = range(50,0,-1)
 
 status_probe = StatusProbe()
+
+class MonkeyGroup():
+    def __init__(
+            self,
+            group_id,
+            status,
+     ):
+        self.group_id = group_id
+        self.status = status
 
 def create_cells_based_on_value_list(value_list, cell_type, threadLock):
     if len(value_list) == 0:
@@ -36,7 +45,7 @@ def create_cells_based_on_value_list(value_list, cell_type, threadLock):
             cells.append(cell)
 
 # start block -- required to make this thing runnable.
-    cell_group = CellGroup(cells, cells, 0, (0,1),(len(value_list) - 1, 1), GroupStatus.ACTIVE, threadLock, 1000000000, 1000000000)
+    cell_group = MonkeyGroup( 0, CellStatus.ACTIVE )
     for cell in cells:
         cell.group = cell_group
 # end block
