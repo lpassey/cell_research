@@ -1,0 +1,1561 @@
+<h1 style="text-align:center">From Agency to Architecture:<br/>
+    Reframing the "Self-Sorting" Model of Morphogenesis</h1>
+<h3 style="text-align:center">Abstract</h3>
+<p>This paper presents a critical technical rebuttal of Zhang, Goldstein, and
+    Levin's "Classical Sorting Algorithms as a Model of Morphogenesis:
+    Self-Sorting Arrays Reveal Unexpected Competencies in a Minimal Model of
+    Basal Intelligence" (Adaptive Behavior, 2024). The original work recasts
+    three classical sorting algorithms&mdash;Bubble, Insertion, and Selection
+    sort&mdash;as "cell-view" distributed systems in which individual array
+    elements act as autonomous agents executing local decision rules, and
+    interprets the emergent behaviors of these systems as evidence of basal
+    intelligence. The present analysis subjects the associated public codebase
+    to systematic technical examination, revealing several significant
+    methodological and interpretive concerns.</p>
+<p>First, the three "cell-view" implementations are shown to be functionally
+    distinct from their canonical counterparts&mdash;designated here as
+    Randomized Pair Exchange (RPE), Randomized Prefix Exchange (RPX), and
+    Randomized Stateful Drift (RSD)&mdash;and are more accurately characterized
+    as novel stochastic local-exchange algorithms rather than distributed
+    reformulations of established procedures.</p>
+<p>Second, although the original paper presents the implementations as executing
+    in parallel, the use of Python's Global Interpreter Lock (GIL) renders
+    execution concurrent but not truly parallel, introducing non-deterministic
+    scheduling that contradicts the authors' claim of algorithmic determinism.</p>
+<p>Third, a centralized functional equivalent of the "cell-view" RPE algorithm
+    is constructed and shown to produce state-transition-by-state-transition
+    identical results under matched conditions, demonstrating that any observed
+    robustness is attributable to update rules, execution order, and
+    fault-handling logic rather than to architectural decentralization or
+    distributed autonomy.</p>
+<p>Fourth, efficiency comparisons between cell-view and traditional algorithms
+    are found to be methodologically questionable: reproduced measurements show
+    that cell-view variants incur substantially higher comparison costs than
+    claimed, and the baseline implementations against which they were measured
+    appear to reflect naive rather than optimized formulations.</p>
+<p>Fifth, the paper's fault-tolerance claims are unsubstantiated due to absent
+    experimental protocols, undefined fault models, and non-executable baselines;
+    dormant code fragments suggest the authors explored probabilistic
+    comparison-inversion faults that went unreported.</p>
+<p>The paper concludes that any resilience exhibited by the cell-view
+    implementations reflects well-established properties of iterative
+    local-exchange systems under centralized termination control&mdash;a
+    framework described decades prior in self-stabilization theory&mdash;rather
+    than constituting evidence for emergent basal intelligence in minimal
+    distributed systems.</p>
+<div><strong>keywords</strong>: sorting algorithms, morphogenesis, basal
+    intelligence, distributed systems, self-stabilization, fault tolerance,
+    computational rebuttal, Python threading, stochastic algorithms</div>
+<h2 id="introduction">Introduction</h2>
+<p>In "Classical sorting algorithms as a model of morphogenesis:
+    Self-sorting arrays reveal unexpected competencies in a minimal model of
+    basal intelligence," Zhang, Goldstein, &amp; Levin, explore whether
+    systems traditionally regarded as purely mechanical and non-cognitive
+    can nonetheless exhibit behaviors they associate with minimal or "basal"
+    intelligence.</p>
+<p>Their paper aims to challenge the assumption that intelligence
+    requires complex neural architectures by arguing that global order and
+    adaptive behavior can emerge from collections of simple interacting
+    elements. Their approach was to reinterpret three familiar sorting
+    algorithms as simplified, abstract models for studying these
+    interactions. It recasts array elements as autonomous "cells" that
+    execute local decision rules rather than being manipulated by a
+    centralized controller, and presents this as a more biologically
+    grounded, distributed architecture<a href="#fn1" class="footnote-ref"
+      id="fnref1"><sup>1</sup></a>, drawing an analogy
+    between the organization of elements in an array and the spatial
+    organization of cells during biological development.</p>
+<p>To investigate this idea, the authors implemented a custom sorting
+    evaluation framework and re-implemented three familiar sorting
+    algorithms (Bubble sort, Insertion  sort, and Selection sort) into what
+    they term as a "cell-view" representation. The authors frame
+    conventional sorting implementations as relying on centralized, top-down
+    control and contrast this with their bottom-up agent model, although
+    while centralized control is a common implementation pattern it is not a
+    formal requirement of any traditional sorting algorithm.<a href="#fn2"
+      class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<p>They then examined their system's behavior under a range of
+    perturbations, including simulated execution failures and disruptions
+    due to unreliable element behavior. The authors report that these
+    distributed, "cell-view" systems often recover from such perturbations
+    and successfully complete sorting tasks.</p>
+<p>The paper also highlights two phenomena that appear to arise in the
+    distributed "cell-view" implementations: (a) temporary reduction in
+    progress to navigate around a defect, and (b) unexpected clustering
+    behavior among array elements when different sorting policies coexist in
+    chimeric arrays.</p>
+<p>On the basis of these observations, the authors interpret their
+    findings as evidence that systems composed of simple locally interacting
+    agents can sort themselves more reliably and robustly in the presence of
+    errors than common implementations of traditional sorting algorithms.
+    The authors interpret these observations as evidence that "basal forms
+    of intelligence can emerge in simple systems without being explicitly
+    encoded in their underlying mechanics" <a href="#fn3"
+       class="footnote-ref" id="fnref3"><sup>3</sup></a></p>
+<p>The extent to which these observed behaviors arise from genuinely
+    decentralized, locally informed agents&mdash;as opposed to from residual
+    centralized control, global state visibility, or algorithmic
+    modifications introduced to handle perturbations&mdash;is not resolved at the
+    level of conceptual framing alone. These distinctions are left to be
+    evaluated by examining the concrete technical implementation and its
+    departures from standard sorting algorithms.</p>
+<p>In some discussions of this work, other commentators have framed
+    these results as suggesting that distributed processing itself leads to
+    emergent behaviors not present in centralized systems or that the
+    distributed implementations exhibit flexibility and robustness because
+    of their architecture rather than the specific rule set used.<a
+      href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>
+    These interpretations extend the  paper's framing and are not supported
+    by controlled architectural comparisons in the published text. They should
+    therefore be understood as interpretive inferences by readers rather than
+    explicit, evidenced conclusions of the authors.</p>
+<p>The purpose of the present analysis is to examine the published codebase
+    and experimental setup in detail and to determine whether the
+    behaviors attributed to the system are accurately characterized and
+    reproducible, and whether&mdash;when correctly described&mdash;they support
+    the paper's broader claims about decentralization, autonomy, and basal
+    intelligence, or may instead arise from modeling assumptions,
+    implementation artifacts, or measurement error.</p>
+<h2 id="analysis-of-the-published-codebase">Analysis of the Published
+    Codebase</h2>
+<p>The only publicly available source of the Python code corresponding
+    to the reported experiments is the GitHub repository at <a
+      href="https://github.com/Zhangtaining/cell_research">https://github.com/Zhangtaining/cell_research</a>.</p>
+<p>The GitHub repository contains little to no documentation describing
+    intended usage or experimental context. Several scripts (e.g.,
+    <code>sorting_cells.py</code>, <code>sorting_cells_multithread.py</code>)
+    fail to execute as written,
+    often due to references to outdated class definitions. In
+    <code>freezing_sorting_analysis.py</code> there is code to allow use of
+    any of the three redesigned sorting algorithms, but the code is
+    commented out in such a way that only the "bubble" algotype is ever
+    used.</p>
+<p>The structure of the repository suggests that portions of the code
+    reflect intermediate stages of development; as the codebase evolved,
+    earlier scripts were not consistently refactored to preserve viability.
+    The repository appears to represent a snapshot of the codebase at or
+    near the conclusion of the reported experiments. In the absence of prior
+    version history, earlier implementations and experimental iterations can
+    only be inferred from the existing files. My analysis often includes
+    reasonable inferences drawn from the original paper and the incomplete
+    codebase.</p>
+<p>The evaluation strategy used in my study was to identify each Python
+    script that has a <code>__main__</code> method, and attempt to run that
+    script in a controlled environment. When the scripts failed, I attempted
+    to refactor the code as necessary to create working code; that code was
+    then examined to discover its operating logic.</p>
+<p>To ensure transparency I have forked the original GitHub repository
+    to <a href="https://github.com/lpassey/cell_research"
+         >https://github.com/lpassey/cell_research</a>. As I have
+    modified the original code to make it executable, to add metrics, or to
+    enhance testability, I have checked these revisions into the new
+    repository with a description and explanation of the changes. By using
+    the git version control system, it should be possible to track exactly
+    what changes I have made and how they differ from the authors' original
+    code. I have tried to avoid making changes for efficiency reasons to
+    maintain fidelity to the original codebase. When the code was unclear,
+    or when I assumed a rationale that was not explicit, I have added
+    clarifying comments while leaving the code unchanged.</p>
+<h3 id="implementations-of-cell-view-sorting-algorithms">Implementations
+    of Cell-View Sorting Algorithms</h3>
+<p>We begin by examining the data structures and execution model used by
+    the authors to implement their cell-view sorting algorithms. We start
+    with how individual cells are represented in code and how their behavior
+    over time is controlled.</p>
+<h4 id="the-cell-view-formulation-as-a-programming-paradigm">The
+    Cell-View Formulation as a Programming Paradigm</h4>
+<p>According to the original paper:</p>
+<blockquote>
+    <p>[W]e implement a distributed algorithm that is executed, in parallel,
+        by each number (i.e., cell) with local knowledge of its environment. In
+        lieu of a central controller, cells have individual preferences about
+        the ordering between them and their neighbors. <a href="#fn5"
+            class="footnote-ref" id="fnref5"><sup>5</sup></a></p>
+</blockquote>
+<blockquote>
+    <p>We sought to study the sorting process in a more biologically
+        grounded (distributed) architecture, where each cell is a competent
+        agent implementing local policies. We thus defined three bottom-up
+        versions of common sort algorithms, where actions take place based on
+        the cells' perspective (view) of their environment within the array. <a
+                href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a></p>
+</blockquote>
+<p>The authors' implementations claims to use the Python 3.0 scripting
+    language, <a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>
+    and all sorting elements are instances of a common cell template
+    (<code>MultiThreadCell</code>) that defines the general structure of cell
+    behavior. At the conceptual level, the authors' implementations consist of
+    elements represented as objects derived from this common template. This
+    template defines the shared structure of all cells: stored attributes,
+    boundary information, references to the containing array, and the
+    general-purpose <code>swap()</code> method. It does not itself define
+    specific movement logic, but instead defines a set of decision
+    procedures&mdash;such as determining whether a move <em>should</em> occur
+    and how that move should be carried out&mdash;that must be filled in by
+    more specialized cell types. These specialized cell types correspond to
+    different sorting strategies (e.g., Bubble sort, Insertion sort, Selection
+    sort), each implemented as a distinct kind of cell with its own movement
+    and decision rules. The paper terms these various sorting algorithm classes
+    "algotypes".</p>
+<p>From a software engineering standpoint, this is a conventional
+    object-oriented design. A base class defines shared state and methods;
+    subclasses override or extend behavior to implement algorithm-specific
+    policies. This design allows the same overall system structure to be
+    reused while varying only the local behavioral rules assigned to
+    individual cells. The "cell-view" formulation therefore amounts to
+    distributing algorithmic control across object instances rather than
+    centralizing it in a single loop over an array.</p>
+<p>Each cell maintains a status field as specified in
+    <code>MultiThreadCell.py</code> (e.g., "ACTIVE", "MOVING", "INACTIVE",
+    "FREEZE"). These statuses regulate whether the cell may initiate
+    movement, whether it is in transition, or whether it has reached the end
+    of its useful life. The "FREEZE" status is used to simulate damage,
+    whose ability to swap places with another cell is limited. All cells
+    also maintain a reference to the shared array in which they reside,
+    permitting read and write access to global state, a
+    <code>StatusProbe</code> to log progress, and a shared
+    <code>TreadLock</code> used to synchronize access to the global
+    array.</p>
+<p>The core shared operation is <code>swap()</code>. When invoked, it is
+    given a target index. If the invoking cell is in the "FREEZE" state, the
+    attempt is logged and no action occurs. Otherwise, the cell copies
+    itself to the target position and replaces its former position with the
+    displaced element. Importantly, <code>swap()</code> does not
+    independently validate the correctness of the move; correctness is
+    assumed to have been established by subclass logic prior to invocation.
+    The base template thus provides structure, while subclasses supply
+    mechanics.</p>
+<p>Conceptually, this design allows mixed ("chimeric") arrays:
+    heterogeneous cell types coexisting within a shared structure. All
+    cells&mdash;regardless of type&mdash;share the same underlying control structure,
+    execution cycle, global data access, and state awareness as defined by
+    the common<code>MultiThreadCell</code> template.</p>
+<p>This structure is entirely compatible with standard object-oriented
+    paradigms and does not, in itself, imply distributed execution or
+    emergent behavior. It is a well-established modularization strategy in
+    computer science.</p>
+<h4 id="h4">The Multi-Threaded Execution Model</h4>
+<p>Separately from the conceptual "cell-view" formulation, the authors
+    also state:</p>
+<blockquote>
+    <p>We used multi-thread programming to implement the cell-view sorting
+        algorithms. 2 types of threads were involved during the sorting process:
+        cell threads are used to represent all cells, with each cell represented
+        by a single thread; a main thread is used to activate all the threads
+        and monitor the sorting process. <a href="#fn8" class="footnote-ref"
+            id="fnref8"><sup>8</sup></a></p>
+</blockquote>
+<p>The <code>MultiThreadCell</code> template itself inherits from
+    Python's built-in Thread template, which gives it the ability to
+    participate in the Python threading module. Thus, every cell of any
+    algotype is both a data object and potentially a thread of execution. A
+    separate "main" thread activates all cell threads and periodically
+    checks whether the array is sorted.</p>
+<p>This multithreaded design is explicitly presented by the authors as
+    a means of achieving parallel execution analogous to the activity of
+    biological cells, in which many cells act simultaneously. In CPython,
+    the Global Interpreter Lock (GIL) ensures that only one thread executes
+    Python bytecode at a time. Python's threading model is therefore
+    concurrent but not parallel. Concurrency gives the illusion of
+    simultaneous execution while in fact executing things in a random
+    sequence. <a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a></p>
+<p>Thread execution is interleaved under interpreter control and
+    operating system scheduling; no fixed ordering among threads is
+    guaranteed, and true simultaneous execution of Python bytecode does not
+    occur. Consequently, although the design is described as parallel, the
+    threading module functions as a stochastic scheduler, determining which
+    cell will be executed next. Execution order is therefore governed by
+    interpreter scheduling not by algorithmic structure.</p>
+<p>When a thread is scheduled, its run() method is invoked. For each
+    specialized cell type derived from the <code>MultiThreadCell</code>
+    template, run() repeatedly checks whether the cell's status is
+    "INACTIVE" and, if not, acquires the shared lock, calls the specialized
+    move() method, releases the lock, and then repeats. The shared lock
+    enforces mutual exclusion on the array, ensuring that only one cell
+    modifies it at any given time. This serialization eliminates concurrent
+    writes and guarantees atomicity of swaps, but it also collapses the
+    system into effectively single-threaded execution at the point of
+    mutation. When the status for any given cell becomes "INACTIVE" it
+    terminates naturally.</p>
+<p>In the absence of an explicit sleep or yield operation in this loop (which is
+    not present in the existing code), a scheduled thread may consume its entire
+    allotted time slice (typically 5 milliseconds) repeating the same operations
+    before another thread is scheduled.</p>
+<p>Because each cell's invocation order is not predetermined, the
+    sorting process operates on the list of cell elements through repeated
+    trials rather than a fixed traversal order. No individual cell can
+    determine global sortedness from its local state alone so the end of a
+    sorting process cannot arise "naturally" from distributed local rules.
+    Instead, a separate monitoring thread periodically scans the entire
+    array to determine whether it is sorted. When sortedness is detected,
+    this thread sets every cell's status to "INACTIVE", allowing their run()
+    loops to terminate. This termination mechanism reintroduces centralized
+    oversight into a system presented as distributed.</p>
+<p>The paper asserts that "our algorithms are deterministic; there was
+    no stochasticity in the algorithms" <a href="#fn10" class="footnote-ref"
+        id="fnref10"><sup>10</sup></a> While the canonical sorting algorithms
+    which inspired the "cell-view" implementations are deterministic, any
+    system that relies on thread scheduling under the GIL is non-deterministic.
+    The determinism of the canonical algorithms does not eliminate the stochastic
+    execution order of the cell-view"algorithms.</p>
+<h2 id="cell-view-agentic-algorithms.">"Cell-view" (agentic) algorithms.</h2>
+<p>We now turn to a brief examination of the actual algorithms used, and
+    their various implementations. A detailed description and evaluation of
+    each of the algorithms used can be found in <a href="#appendix-a">Appendix A.</a></p>
+<h3 id="rpe">Randomized Pair Exchange (RPE)</h3>
+<p>The <strong>RPE</strong> algorithm is intended to be similar to the
+    traditional Bubble sort. The traditional Bubble sort traverses a list of
+    elements linearly and swaps elements that are out of order. When a
+    traversal completes without any swaps the list is considered sorted.
+    Because "cell-view" elements are invoked randomly, not linearly, and
+    because "cell-view elements cannot detect when the entire array becomes
+    sorted, the <strong>RPE</strong> algorithm is reduced to a simple set of
+    randomized pair-wise exchanges.</p>
+<h3 id="rpx">Randomized Prefix eXchange (RPX)</h3>
+<p>The <strong>RPX</strong> algorithm was intended to be similar to the
+    traditional Insertion sort. Instead, it became an adjacent-swap process
+    in which a randomly scheduled element examines the sublist to its left
+    and may swap one position left only if its own value is smaller than its
+    immediate neighbor to the left and then only if that entire preceding
+    sublist is already sorted; otherwise it does nothing and yields control
+    of the processor. Unlike a classical Insertion sort, there is no
+    deterministic left-to-right pass, no maintained boundary between sorted
+    and unsorted regions, no guarantee that the next element processed is
+    the next unsorted element, and no inner loop that continues moving the
+    same element leftward until it reaches its correct position. Instead,
+    each activation permits at most one swap and further movement depends on
+    future random reselection, so convergence arises from repeated random
+    local exchanges rather than systematic insertion into a growing sorted
+    prefix.</p>
+<h3 id="rsd">Randomized Stateful Drift (RSD)</h3>
+<p>The <strong>RSD</strong> algorithm is intended to be similar to the
+    traditional Selection sort, where the list is scanned for the lowest
+    possible value which is then moved to the sorted portion. In
+    <strong>RSD</strong>,each element maintains an internal
+    "<code>ideal_position</code>" index and when the element is randomly
+    selected it compares itself to the element currently at that index; if
+    it is smaller it swaps with that target, otherwise it increments its
+    <code>ideal_position</code> and yields, progressively restricting how
+    far left it can be moved. It is not a Selection sort because no pass
+    scans the remaining suffix to find a global minimum, no fixed boundary
+    advances left-to-right, and placement is not decided by a complete
+    search before swapping; instead, decisions are made through repeated
+    random activations and pairwise comparisons against a drifting
+    per-element pointer.</p>
+<h2 id="efficiency-comparison">Efficiency comparison</h2>
+<p>We turn now to a quantitative evaluation of the authors' reported
+    efficiency results and statistical comparisons between traditional and
+    multithreaded {"cell-view") sorts. The authors state that they used the
+    total steps that each algorithm needed to complete the sorting process
+    for 100 elements in 100 experiments to indicate the efficiency of the
+    algorithm (Figure 4). <a href="#fn11" class="footnote-ref"
+        id="fnref11"><sup>11</sup></a> They go on to say that they counted
+    only swapping steps, and that using only this metric there was no
+    significant difference between the performance of the traditional Bubble
+    and Insertion  sorting algorithms and their own reimagined multithreaded
+    ("cell-view") algorithms, from which they concluded that the efficiency
+    is very similar between traditional sorting algorithms and their own
+    implementations.</p>
+<p>They claim that they went on to consider both reading and writing as
+    costly steps, and added these metrics to their analysis. They
+    conclude:</p>
+<blockquote>
+    <p>These results indicate that the cell-view Bubble and Insertion
+        sorting algorithms are more efficient than the traditional versions.
+        This is likely because traditional algorithms are using each element to
+        compare with other elements, while cell-view algorithms will stop
+        proactively comparing with other cells when they are on the target
+        position. In contrast, the cell-view Selection sorting algorithm is less
+        efficient than the traditional Selection sorting algorithm.</p>
+</blockquote>
+<p>The caption to the referenced Figure 4 reads:</p>
+<blockquote>
+    <p>100 experimental repeats were performed in three kinds of sort, in
+        traditional and cell-view modes, to compare efficiencies of each method.
+        When comparing only the active moves taken (A), it is seen that
+        cell-view sort is almost exactly as efficient as the traditional version
+        for Bubble and Insertion sort(p=0.24), but is less efficient for
+        Selection sort (the Z-test statistical value is 120.43, and p-value is
+        0). When comparing comparisons as well as moves (corresponding to the
+        biological cost of sensing, as well as acting), the cell-view versions
+        are actually more efficient for Bubble and Insertion Sorts (Z-test
+        statistical values for Bubble and Insertion  sort were -68.96 and -71.19
+        respectively, p&lt;&lt;0.01), while less efficient (z=106.55,
+        p&lt;&lt;0.01) for Selection sort (B).</p>
+</blockquote>
+<p>Given the accompanying graphic, it appears that the data generated by
+    the authors showed an average swap rate of approximately 2400 swaps per
+    sort for both the traditional and the RPE algorithms. These values are
+    consistent with the well-established metrics for Bubble sorts, which is
+    an average of (n-(n-1)/4) or 2475 swaps for a 100 element array. For a
+    naive Bubble sort, where the entire array is scanned for duplicates on
+    every pass the maximum number of comparisons is ((n-1)-(n-1))
+    (9801). For a random permutation of elements, the expected number of
+    passes in a Bubble sort, where n = 100, averages 87.5 passes before the
+    ‘sorted' state is reached.<a href="#fn12" class="footnote-ref" id="fnref12"><sup>12</sup></a>
+    Thus, for a naive implementation of the Bubble sort one would expect
+    an average of 8662 comparisons for 2475 swaps.</p>
+<p>Independent verification of these claims is difficult because the
+    published codebase is incomplete and several referenced scripts are not
+    directly executable. To date I have found nothing in the code, with the
+    exception of the RSD ("Randomized Stateful Drift") algorithm, that indicates
+    that any Cell can recognize when it has reached its target position. It
+    is also worth noting that the authors did not include any elapsed
+    computation time in their evaluations.</p>
+<p>I found only one script that purports to implement a traditional
+    Bubble sort, and it was not only inoperable, but it implemented the
+    Bubble sort on a linked list, not an array. Nor could I find any code
+    that implemented a traditional Insertion  or Selection sort. It is likely
+    that the authors relied on documented characteristics of these
+    traditional algorithms for their baseline comparisons rather than
+    creating new implementations. This would explain why there are no
+    baseline time metrics included in their analysis, and why the graphic of
+    traditional sorting efficiency matches the theoretical algorithmic
+    performance so closely.</p>
+<p>To obtain a runnable baseline consistent with the authors' cell
+    abstractions, I constructed a single-threaded driver around their
+    <code>BubbleSortCell</code> template. Instead of a multithreaded design,
+    this naive Bubble sort implementation operated as follows:</p>
+<ol type="1">
+    <li>While the array is not sorted:
+        <ol type="1">
+            <li>traverse the entire array and for each cell:
+                <ol type="1">
+                    <li>call the cell's <code>move()</code> method.</li>
+                </ol>
+            </li>
+        </ol>
+    </li>
+</ol>
+<p>I also created simple single-threaded optimized Bubble sort,
+    Insertion  sort and Selection sort methods, also using the
+    <code>BubbleSortCell</code> object as the sorting element.</p>
+<p>Using <code>multithread_cell_sorting_steps.py</code> as a starting
+    point, I added this new code to create baseline data for all traditional
+    sorting algorithms, as well as the naive implementation of a bubble
+    sort. I added code to execute all seven algorithms 100 times on an
+    identical suite of test arrays, and saved the results in a .csv file.
+    This script is committed to my GitHub repository with the name
+    <code>multithread-cell-sorting-test.py</code>.</p>
+<p>The results of executing this test can be summarized as follows:</p>
+<table style="width:100%;">
+    <colgroup>
+        <col style="width: 21%"/>
+        <col style="width: 14%"/>
+        <col style="width: 14%"/>
+        <col style="width: 22%"/>
+        <col style="width: 27%"/>
+    </colgroup>
+    <thead>
+    <tr class="header">
+        <th style="text-align: left;">Type</th>
+        <th style="text-align: left;">Metric</th>
+        <th style="text-align: left;">Average</th>
+        <th style="text-align: left;">Standard Deviation</th>
+        <th style="text-align: left;">Coefficient of Variance</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr class="odd">
+        <td style="text-align: left;"><strong>Std Bubble</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.004687123</td>
+        <td style="text-align: left;">000.0016870133</td>
+        <td style="text-align: left;">35.9925124693</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">2436.55</td>
+        <td style="text-align: left;">174.5578179806</td>
+        <td style="text-align: left;">07.1641385558</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">4879.49</td>
+        <td style="text-align: left;">078.6219049591</td>
+        <td style="text-align: left;">01.6112730010</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"><strong>Std Selection</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.000479064</td>
+        <td style="text-align: left;">000.0001384845</td>
+        <td style="text-align: left;">28.9073128151</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">94.45</td>
+        <td style="text-align: left;">001.8929694486</td>
+        <td style="text-align: left;">02.0042026984</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">5044.45</td>
+        <td style="text-align: left;">001.8929694486</td>
+        <td style="text-align: left;">00.0375257847</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"><strong>Std Insertion</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.002989738</td>
+        <td style="text-align: left;">000.0009386019</td>
+        <td style="text-align: left;">31.3941180454</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">2436.55</td>
+        <td style="text-align: left;">174.5578179807</td>
+        <td style="text-align: left;">07.1641385558</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">2535.55</td>
+        <td style="text-align: left;">174.5578179807</td>
+        <td style="text-align: left;">06.8844163192</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"><strong>Naive Bubble</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.008533496</td>
+        <td style="text-align: left;">000.0013493835</td>
+        <td style="text-align: left;">15.8127867436</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">2436.55</td>
+        <td style="text-align: left;">174.5578179807</td>
+        <td style="text-align: left;">07.1641385558</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">8823</td>
+        <td style="text-align: left;">601.3209365113</td>
+        <td style="text-align: left;">06.8153795366</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"><strong>RPE</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.114581109</td>
+        <td style="text-align: left;">000.0096051282</td>
+        <td style="text-align: left;">08.3828201042</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">2436.55</td>
+        <td style="text-align: left;">174.5578179807</td>
+        <td style="text-align: left;">07.1641385558</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">9402.23</td>
+        <td style="text-align: left;">678.4188964725</td>
+        <td style="text-align: left;">07.2155105382</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"><strong>RSD</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">0.154874576</td>
+        <td style="text-align: left;">000.0106008336</td>
+        <td style="text-align: left;">06.8447861956</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">1171.47</td>
+        <td style="text-align: left;">094.0156289393</td>
+        <td style="text-align: left;">08.0254405951</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">6120.87</td>
+        <td style="text-align: left;">094.0757974006</td>
+        <td style="text-align: left;">01.5369677415</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"><strong>RPX</strong></td>
+        <td style="text-align: left;">Time</td>
+        <td style="text-align: left;">3.962558625</td>
+        <td style="text-align: left;">000.3091006854</td>
+        <td style="text-align: left;">07.8005328025</td>
+    </tr>
+    <tr class="even">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Swaps</td>
+        <td style="text-align: left;">2436.55</td>
+        <td style="text-align: left;">174.5578179807</td>
+        <td style="text-align: left;">07.1641385558</td>
+    </tr>
+    <tr class="odd">
+        <td style="text-align: left;"></td>
+        <td style="text-align: left;">Comparisons</td>
+        <td style="text-align: left;">109499.83</td>
+        <td style="text-align: left;">7487.628939285</td>
+        <td style="text-align: left;">06.8380279123</td>
+    </tr>
+    </tbody>
+</table>
+<p>This table reports the aggregate performance metrics over 100 paired
+    trials for the traditional sorting algorithms, the naive Bubble sort
+    variant, and the corresponding "cell-view" implementations, all
+    evaluated on identical input arrays. The table's primary value is
+    comparative: it shows that swap counts for the traditional algorithms
+    match established inversion-based expectations, while the cell-view
+    variants generally incur equal or higher comparison counts and
+    substantially higher execution time, with variability profiles that
+    differ according to their underlying design. In particular, the
+    randomized "cell-view" forms concentrate cost in repeated sensing and
+    reselection rather than in reduced action steps, which affects total
+    work even where swap counts appear similar. Detailed derivations,
+    instrumentation notes, and algorithm-by-algorithm analysis are provided
+    in <a href="#appendix-b">Appendix B.</a></p>
+<p>These measurements are relevant to the authors' efficiency claims but
+    are not, by themselves, dispositive with respect to broader
+    interpretations about emergent or basal intelligence.</p>
+
+<h2 id="fault-tolerance">Fault Tolerance</h2>
+<p>While the efficiency measurements constrain what can be inferred
+    about comparative computational cost, they do not address the separate
+    question of algorithmic robustness under fault conditions. The paper
+    advances an additional claim that the cell-view variants exhibit
+    superior error tolerance under injected "Frozen Cell" faults. That claim
+    requires independent examination because it depends on the definition of
+    monotonicity error<a href="#fn13" class="footnote-ref"
+        id="fnref13"><sup>13</sup></a>, the fault model, and the baseline
+    implementations used for comparison.</p>
+<p>Every element derived from the <code>MultiThreadCell</code> template
+    has a potential cell status of "FREEZE". In the base implementation of
+    <code>swap()</code> when an element's <code>swap()</code> method is
+    invoked, the logic first checks its status. If that status is "FREEZE"
+    the method logs the attempt then ends without any further action; thus,
+    a "frozen" cell cannot be the first participant in a swap. However,
+    there is no corresponding check preventing a frozen cell from being
+    moved when <em>another</em> cell's <code>swap()</code> method is
+    invoked. A commented-out line in the code indicates that the authors
+    considered (and perhaps executed) a stricter implementation in which
+    frozen cells would be completely immobile. As written, however, the
+    implementation adopts a weaker notion of "freezing," in which frozen
+    cells retain passive mobility while losing only the ability to initiate
+    movement. To adopt the original authors' anthropomorphism, a "frozen"
+    cell cannot choose to move, but it can be pushed around.</p>
+<p>No traditional sorting algorithm assigns a status to an element in an
+    array. The paper provides no reproducible experimental protocol, no
+    detailed definition of the frozen-cell intervention, no tabulated
+    results, and no runnable baseline implementations of the traditional
+    algorithms against which the comparisons are said to have been made. In
+    the absence of documented methodology and verifiable baselines, the
+    reported advantage in fault tolerance cannot be independently confirmed
+    and should therefore be treated as unsubstantiated rather than
+    established. <a href="#appendix-c">Appendix C</a> details the specific gaps
+    in instrumentation, controls, and implementation evidence that prevent
+    validation of this claim.</p>
+<h3 id="fault-tolerance-in-cell-view-algorithms-rpe-rpx-rsd">Fault
+    Tolerance in "cell-view" algorithms (RPE, RPX, RSD)</h3>
+<h4 id="freezing_sorting_analysis.py">freezing_sorting_analysis.py</h4>
+<p>We now turn to an examinations of a published script:
+    <code>freezing_sorting_analysis.py</code>, which was apparently designed
+    to demonstrate the robustness of the cell-view sorting algorithms under
+    conditions where some cells are deliberately limited in their behavior
+    ("frozen"). This script is a good starting point for analysis as it uses
+    only <code>BubbleSortCell</code> elements, and it is particularly
+    informative because it exposes both the experimental assumptions made by
+    the authors and the practical mechanisms by which those assumptions are
+    implemented in code.<a href="#fn14" class="footnote-ref"
+        id="fnref14"><sup>14</sup></a> Additionally, it is useful as an
+    example of how error-handling is explicitly coded into objects which
+    implement the <code>MultiThreadCell</code> template, and not an emergent
+    capability of "agentic" coding.</p>
+<p>A detailed description of the existing
+    <code>freezing_sorting_analysis.py</code> script is included in <a href="#appendix-d">Appendix D.</a></p>
+<h4 id="deterministic">Implementation of a Deterministic But Unpredictable
+    Execution Model</h4>
+<p>While a good starting point for analysis,
+    <code>freezing_sorting_analysis.py</code> has several shortcomings: it
+    does not test all of the cell-view algorithms without code
+    modifications; it cannot be run deterministically and therefore the
+    results are not repeatable; and while it uses large lists for testing
+    (100 cells) the cell values are initialized randomly with values from 0
+    to 10, which causes large numbers of duplicates.</p>
+<p>Addressing this last short-coming first, the purpose of
+    <code>freezing_sorting_analysis.py</code> is to evaluate the ability of
+    the three "cell-view" algorithms to successfully sort a list of values
+    when one or more of the cells are "frozen". By populating a 100-element
+    list with random integers between only 0 and 10, the authors have
+    created a high-density environment where duplicate values are
+    guaranteed. Statistically, this ensures that a "frozen" cell has a high
+    probability of being assigned a value that is already compatible with
+    its fixed position in a sorted sequence.</p>
+<p>For the next stage of the evaluation, I made a small number of
+    changes to the script to improve transparency and reproducibility and to
+    increase code coverage. These changes facilitated systematic analysis,
+    but they did not alter the functional behavior of the algorithm. This
+    new implementation has been committed to GitHub as
+    <code>freezing_sorting_analysis_single_thread.py</code>.</p>
+<p>First, I increased the values to a range of 0-100, which greatly
+    reduced the number of duplicate values in the list.</p>
+<p>In the original design, each cell runs in its own thread and
+    repeatedly invokes <code>move()</code> while holding a shared lock.
+    Because execution occurs under the CPython Global Interpreter Lock
+    (GIL), only one thread can execute Python bytecode at any given moment.
+    The additional explicit lock around move() further guarantees that only
+    one cell action is performed at a time. Despite the presence of multiple
+    threads, the effective behavior is therefore a serialized sequence of
+    individual <code>move()</code> calls.</p>
+<p>For my next modification I replaced the use of Python threads with a
+    simple control loop driven by a pseudo-random number generator; this
+    change simply moved the selection logic from the Python runtime into a
+    transparent control loop. One important side effect of this change is
+    that, while the sequence of cell activations remains effectively
+    unpredictable, it becomes fully reproducible. Pseudo-random number
+    generators are deterministic: given the same initial seed, they will
+    generate the same sequence of values. This transition maintains the
+    stochastic nature of cell activation while providing a reproducible and
+    functionally equivalent execution environment.</p>
+<p>The revised control loop invokes the cell's move() method directly
+    instead of relying on the run() method, and operates as follows:</p>
+<p>While the list is not sorted: 1. Compute a random number between zero
+    and the length of the list minus one. 2. Select the cell at the
+    corresponding position in the array. 3. Invoke the cell's
+    <code>move()</code> method. 4. Repeat</p>
+<p>This substitution is appropriate for analysis because it preserves
+    the operational semantics that matter to correctness and measured cost:
+    single-cell moves, shared-state updates, and non-deterministic
+    activation order. It removes thread-management overhead and scheduler
+    artifacts without introducing parallelism that does not actually occur
+    under the GIL. In addition, randomized execution can be driven by a
+    seeded pseudo random number generator, producing an activation sequence
+    that is unpredictable in structure yet exactly reproducible across runs
+    with the same seed. That property improves experimental control and
+    auditability while retaining the stochastic scheduling model intended by
+    the original design.</p>
+<p>This change to the control loop allowed me to remove any references
+    in the code to the thread lock as there is no longer any risk of
+    simultaneous modification of a shared resource, however I have avoided
+    making changes to optimize the code in order to maintain as much
+    similarity to the existing code as possible.</p>
+<p>A global <code>StatusProbe</code> template instance is injected into
+    every object derived from <code>MultiThreadCell</code>. This logging
+    object records the state of the array every time the <code>swap()</code>
+    method is called. I added code to
+    <code>freezing_sorting_analysis_single_thread.py</code> to record this
+    state history to both .npy and .csv (Comma Separated Values) files to
+    preserve the state of the sort attempts for all cell-view algorithms
+    with 0, 1 and 2 frozen cells. This makes it possible to reconstruct the
+    exact sequence of sorted states produced during a run and to verify that
+    repeated executions with the same seed yield identical behavior.</p>
+<h4 id="functional-decomposition-of-cell-logic">Functional Decomposition
+    of Cell Logic</h4>
+<p>The original paper attributed the observed robustness of the sorting
+    process&mdash;particularly its tolerance to frozen or malfunctioning cells&mdash;to
+    the agentic, decentralized nature of the cell-view implementation. This
+    interpretation presupposes that these behaviors arise from properties
+    intrinsic to distributed autonomy rather than from the underlying
+    control logic itself.</p>
+<p>To evaluate this claim, I created another variation of
+    <code>freezing_sorting_analysis_single_thread.py</code>, now called
+    <code>freezing_sorting_analysis_non-agentic.py</code>, having
+    alternative implementations of the same sorting dynamics, but in which
+    all control is explicitly centralized. The purpose of this next analysis
+    was to determine whether a single executive process, operating without
+    autonomous agents or distributed decision-making, could reproduce the
+    same behaviors observed in the cell-view system under identical
+    perturbations. If so, this would suggest that any robustness exhibited
+    by the implementation&mdash;however defined or measured&mdash;cannot be attributed
+    to distributed autonomy, since identical state trajectories arise under
+    a centralized executor operating the same transition rules and execution
+    order.</p>
+<p>The source code found in
+    <code>freezing_sorting_analysis_single_thread.py</code> initially
+    generated a random array of integers which was then used as the value
+    parameters in creating the list of cell elements; in order to minimize
+    changes, I simply pointed the sorting process to this initial array in
+    lieu of creating a new cell list. Prior to each experiment 0, 1, or 2 of
+    the array values were randomly selected to be frozen. Because the
+    initial array held raw integer values, not objects, the selected
+    positions were stored in a global list of frozen positions.</p>
+<p>The next and final step in my evaluation of
+    <code>freezing_sorting_analysis.py</code> was to extract the logic
+    delegated to the cells and return it to a centralized execution process
+    as implemented in the new method <code>rpe_move</code>. In the new
+    version, the code previously encapsulated within
+    <code>MultiThreadCell</code> was extracted into distinct helper methods
+    called by the centralized executor. To ensure that no existing
+    "cell-view" code was executed, I replaced the targeted list of cell
+    elements with the initial array of integers which were not embedded in
+    any other object. In an explicit conditional branch the controller
+    determined if the targeted neighbor array value was in the list of
+    frozen positions, and if so it updated the frozen list to reflect the
+    new position of the frozen value. This special test was explicitly
+    derived from the existing agent code: <code>rpe_move()</code> will never
+    be executed for the frozen position, but other logic can cause the
+    frozen position to migrate.</p>
+<p>Like the implementation of
+    <code>freezing_sorting_analysis_single_thread.py</code>code, the control
+    loop generates a random number corresponding to the length of the array;
+    if that position is currently frozen it moves on, otherwise it selects
+    the value at that position. It then calls <code>rpe_move()</code>, which
+    randomly selects the neighbor to the right or left for comparison, and
+    swaps the two values if out of order. No additional fault-handling logic
+    was introduced beyond what was already present in the "cell-view"
+    implementations.</p>
+<p>The new executive process also implements logging to record the state
+    of the array after every invocation of <code>rpe_move()</code>. By using
+    an identical pseudo-random number seed, I guaranteed that the
+    centralized executor invoked rpe_move() in exactly the same order as the
+    single-threaded "cell-view" code invokes the move() method defined in
+    the <code>BubbleSortCell</code> object. The centralized and agentic
+    versions invoke the pseudo-random number generator in identical order
+    and frequency per iteration, and because of the detailed logging we can
+    see the state of the agentic list and the integer array at every step of
+    the process.</p>
+<p>Across repeated experiments using identical pseudo-random seeds and
+    perturbations, the centralized executor and the "cell-view"
+    implementations produced identical sequences of array state traces at
+    every logged step of the sorting process. The single-threaded
+    ‘cell-view' implementation serialized execution under a deterministic
+    scheduler; the centralized version preserved that scheduler exactly.
+    Under these conditions, the two systems are transition-by-transition
+    equivalent. The results of these tests have been uploaded to <a
+        href="https://github.com/lpassey/cell_research">https://github.com/lpassey/cell_research</a>
+    together with the Python scripts used to generate them.</p>
+<p>If two systems are functionally identical across all state
+    transitions, they are said to be isomorphic. In the context of
+    <code>freezing_sorting_ analysis.py</code>, the centralized and
+    "cell-view" implementations exhibit this form of isomorphism under
+    identical initial conditions and perturbations. If a central controller
+    can produce the same result using the same logic as a distributed
+    system, then any observed robustness does not depend on distributed
+    autonomy, because identical behavior occurs in its absence; it arises,
+    instead, from update rules, execution order, and explicit
+    perturbation-handling logic. Architectural decentralization contributes
+    no additional causal power under the tested conditions.</p>
+<h4 id="robustness">Unreported Comparison-Error Injection and the
+    Reframing of Robustness</h4>
+<p>The following analysis is necessarily speculative, but it is grounded
+    in the published source code and in well-established results from
+    fault-tolerant distributed systems.</p>
+<p>The published source code contains explicit remnants of a
+    contemplated fault model that is neither described nor evaluated in the
+    paper. In multiple locations one finds logic of the form:</p>
+<pre><code>err_happen = random.random() &lt; 0
+if err_happen:
+    return not self.value &gt; self.cells[int(target_position[0])].value</code></pre>
+<p>and, in commented form:</p>
+<pre><code># err_happen = random.random() &lt; 0.00001
+# if err_happen:
+#     return not self.value &gt; self.cells[int(target_position[0])].value</code></pre>
+<p>As written, <code>random.random() &lt; 0</code> is an impossibility,
+    so no comparison inversion can occur. The commented variant indicates
+    that the authors at least contemplated a non-zero probability of
+    inverting the comparison predicate. This would model a transient
+    comparison fault&mdash;analogous to a hardware comparator failure or bit
+    flip&mdash;where the outcome of <code>a &gt; b</code> is spuriously
+    reversed.</p>
+<p>However, the paper does not identify this error model, does not
+    specify the probability used, does not describe experimental conditions
+    under which it was enabled, and does not report any quantitative
+    evaluation of its effects. The existence of dormant or commented code
+    therefore demonstrates consideration of a fault model that is neither
+    documented nor empirically analyzed.</p>
+<p>It is therefore reasonable to infer that the authors experimented
+    with probabilistic comparison inversions during development. If so, any
+    robustness observed under such perturbations would depend on properties
+    of the surrounding execution framework rather than on the "cell-view"
+    architecture itself. The omission of explicit reporting is material,
+    because robustness claims require a defined fault model and measured
+    behavior under that model.</p>
+<p>From an algorithmic standpoint, two classes of comparison error must
+    be distinguished:</p>
+<ol type="1">
+    <li><strong>False positive swap</strong> (reporting
+        <code>a &gt; b</code> when it is not). This introduces unnecessary swaps
+        and therefore increases the number of cycles. For classical iterative
+        sorts such as Bubble or Insertion  sort, this does not prevent eventual
+        convergence provided that correct comparisons continue to
+        occur.</li>
+    <li><strong>False negative swap</strong> (failing to swap when
+        required). In a traditional implementation with typical termination
+        detection (e.g., "stop when no swaps occurred in a pass"), a persistent
+        false negative can cause premature termination with the list in an
+        unsorted state. This vulnerability has long been recognized in
+        distributed termination detection and stabilization theory.</li>
+</ol>
+<p>As previously demonstrated, the "cell-view" implementations rely on
+    an external controller for termination detection. The agents do not
+    autonomously declare global completion; instead, a centralized routine
+    (e.g., <code>is_sorted()</code>) determines termination. This
+    architecture inherently mitigates certain transient comparison faults:
+    if a swap is incorrectly omitted during one interaction but the system
+    continues iterating, subsequent correct comparisons can repair the
+    disorder. Thus, any observed resilience to transient comparison inversion
+    arises from continued global iteration under centralized termination
+    control, not from distributed morphogenetic properties of the agents. In
+    other words, the tolerance is algorithmic and systemic, not
+    architectural in the sense claimed.</p>
+<p>This is not a novel discovery. The capacity of iterative local-exchange
+    systems to self-correct under transient perturbations is a
+    well-established concept in self-stabilizing systems theory. <a
+        href="#fn15" class="footnote-ref" id="fnref15"><sup>15</sup></a> The
+    presence of a global controller that withholds termination until a
+    consistent global predicate is satisfied is a classical technique for
+    ensuring recovery from transient faults. The code fragments merely
+    suggest that the authors may have encountered these longstanding
+    principles in practice.</p>
+<p>Accordingly:</p>
+<ul>
+    <li>The source code acknowledges a probabilistic comparison fault
+        model.
+    </li>
+    <li>The paper does not define, categorize, or evaluate that model.</li>
+    <li>Any robustness to such faults derives from centralized termination
+        logic and repeated global passes.
+    </li>
+    <li>These mechanisms correspond directly to decades-old results in
+        distributed systems and self-stabilization theory.
+    </li>
+</ul>
+<p>If robustness was observed under comparison perturbations, that
+    tolerance arises from the centralized iteration/termination structure
+    and repeated global sweeps, reflecting known properties of iterative
+    sorting with centralized termination detection. It does not constitute
+    evidence that the "cell-view" paradigm introduces a novel form of
+    morphogenetic fault tolerance.</p>
+<hr/>
+<h1 style="text-align:center" id="appendices">APPENDICES</h1>
+<h2 id="appendix-a">Appendix A &mdash; Referenced and created algoritms</h2>
+<h3 id="the-bubble-sort-algorithm">The Bubble sort algorithm</h3>
+<p>The Bubble sort acts on an organized list of elements, each of which
+    is capable of being compared to any other element. It proceeds as
+    follows:</p>
+<ol type="1">
+    <li>The algorithm selects the first pair of elements in the array, and
+        compares them
+    </li>
+    <li>If the second element in the pair is less than the first element the
+        two elements swap positions.
+    </li>
+    <li>The next pair of elements is selected. Note that the second element
+        in step 2 is now the first element in this step.
+    </li>
+    <li>Steps 2 and 3 are repeated until the end of the list is
+        reached.
+    </li>
+    <li>If any swap occurs in step 2, start over at step 1. If no swap
+        occurs, the list is sorted.
+    </li>
+</ol>
+<p>Typically, the standard Bubble sort is implemented in a centralized
+    execution process which examines, compares and swaps cells if needed,
+    although a centralized process is not mandated by the algorithm
+    itself.</p>
+<h3 id="randomized-pair-exchange-rpe-1">Randomized Pair Exchange
+    (RPE)</h3>
+<p>The first "cell-view" algorithm that the author's discuss is their
+    variation on the classic Bubble sort. In this novel implementation the
+    authors created a new random-pair exchange sorting algorithm that
+    differs materially from the traditional Bubble sort. It discards steps
+    1. and 3. of the standard Bubble sort, which mandate a linear sequence.
+    Because the <code>move()</code> method is invoked randomly the ability
+    to determine if every element has been visited without a swap is also
+    unavailable so steps 4. and 5. are also omitted. As is mandated by the
+    <code>MultiThreadCell</code> template, in this implementation the
+    compare/swap step (2.) is performed by code embedded in the element
+    itself. When invoked, the cell compares its own value to that of a
+    randomly selected neighbor (left or right). If the pair is out of order
+    a swap is initiated. For clarity, I will refer to this new algorithm as
+    a <strong>Randomized Pair Exchange</strong> (RPE).</p>
+<h3 id="insertion-sort">The Insertion  sort algorithm</h3>
+<p>Beginning with a list of values in an arbitrary (typically random)
+    order:</p>
+<ol type="1">
+    <li>The algorithm begins by treating the first element of the array as a
+        sorted sublist of length one.
+    </li>
+    <li>The next element in the array is selected and compared to the value
+        to its immediate left.
+    </li>
+    <li>While the value of the selected element is less than that of the
+        element being compared, the two elements swap positions.
+    </li>
+    <li>When the value of the selected element is no longer less than the
+        value of the element to its immediate left, the sublist is sorted.
+    </li>
+    <li>The next element in the array is selected, and steps 2 through 4 are
+        repeated.
+    </li>
+    <li>Once the last element of the list has been processed, the entire
+        array has been sorted.
+    </li>
+</ol>
+<h3 id="randomized-prefix-exchange-rpx-1">Randomized Prefix eXchange
+    (RPX)</h3>
+<p>The "cell-view" implementation inspired by the traditional Insertion
+    sort is particularly problematic due to the authors' commitment to an
+    implementation where the cell itself has no visibility into a global
+    state. The traditional Insertion sort relies heavily on the knowledge of
+    the sorted segment that occupies the beginning of the list. Because an
+    element in the Insertion sort cannot be moved until the segment to its
+    immediate left is completely sorted, every time a cell is selected it
+    must traverse the sublist to its left. If the sublist is not sorted the
+    cell's process halts and the scheduler selects a new element for
+    execution. If the sublist <em>is</em> ordered, the element compares its
+    value to the value to its immediate left, and if the two elements are
+    not ordered, then the two elements are swapped. In a traditional
+    Insertion sort the comparison would continue and the selected element
+    would continue to move down the list. In this new implementation the
+    cell does not move further left until the scheduler selects it
+    again.</p>
+<p>While framed by the authors as a variant of an Insertion sort, this
+    algorithm is more accurately described as a stochastic local-exchange
+    process whose convergence depends on repeated random sampling rather
+    than on systematic reduction of disorder. Going forward, I will refer to
+    this algorithm as <strong>Randomized Prefix eXchange</strong> (RPX)
+    sort, reflecting its reliance on randomized cell selection and
+    single-step exchanges conditioned on prefix sortedness. The RPX
+    algorithm can be characterized as a constrained variant of the
+    Randomized Pair-Exchange (RPE) algorithm discussed earlier, differing
+    primarily in the introduction of a prefix-sortedness gate on otherwise
+    identical stochastic adjacent exchanges.</p>
+<p>This new algorithm can probably be best understood by an example.
+    Consider the list:</p>
+<p><code>[14, 81, 03, 94, 35, 31, 28, 17, 94, 13]</code>.</p>
+<p>Although threads are being executed at random, no state change will
+    occur until the scheduler selects element number 3 (<code>03</code>).
+    When this element's <code>move()</code> method is called it examines the
+    beginning segment, <code>[14, 81]</code>, and recognizes that it is
+    sorted. Because <code>03</code> is less than <code>81</code> the two
+    elements are swapped, but the thread endsthere, leading to the list:</p>
+<p><code>[14, 03, 81, 94, 35, 31, 28, 17, 94, 13]</code>.</p>
+<p>The scheduler will again execute cells at random until element number
+    2 is selected (the new position of <code>03</code>). The preceding
+    segment, <code>[14]</code>, is considered sorted as it has only a single
+    element. The comparison determines that <code>03</code> is less than
+    <code>14</code>, so the two values are swapped, resulting in the
+    list:</p>
+<p><code>[03, 14, 81, 94, 35, 31, 28, 17, 94, 13]</code>.</p>
+<p>The scheduler then continues as before.</p>
+<p>In principle, when using this process an element itself
+    <em>could</em> detect when the list is sorted. If an element determines
+    that 1. the preceding sublist is sorted, and 2. the comparison shows
+    that the value of the element is greater than the last element in the
+    sublist, and 3. the element determines that it is the last element in
+    the list (current position equals the list size), then the list is known
+    to be sorted. However, because the authors were attempting to model
+    independent cell behavior, no element contains a feedback mechanism,
+    therefore the process continues until the controlling thread which
+    monitors the order of the list detects that the list is sorted and sets
+    the status of every cell to "INACTIVE", triggering the termination of
+    each thread.</p>
+<h3 id="selection-sort">The Selection sort algorithm</h3>
+<p>The standard Selection sort is actually one of the simplest
+    algorithms to understand:</p>
+<ol type="1">
+    <li>Start at the leftmost element in the array (index 0).</li>
+    <li>Scan the array from the index + 1 to the end and identify the
+        smallest element in the array.
+    </li>
+    <li>Swap the smallest element found with the element at the index.</li>
+    <li>Increment the index and repeat steps 2. and 3.</li>
+    <li>When the index is equal to the length of the array, the sort is
+        complete.
+    </li>
+</ol>
+<p>The Selection sort is the only one of the three standard sorting
+    algorithms that swaps elements which are not adjacent. While it does
+    more comparisons than the other two previously mentioned algorithms it
+    performs fewer writes which makes it useful on hardware where writing to
+    memory is more computationally expensive than reading it.</p>
+<h3 id="randomized-stateful-drift-rsd-1">Randomized Stateful Drift
+    (RSD)</h3>
+<p>The authors created a new algorithm that they describe as a Selection
+    sort, but which differs from the classical Selection sort in several key
+    respects: while it preserves the non-adjacent swaps, it has to deal with
+    the fact that the logic for each element is executed
+    non-deterministically by the Python scheduler (GIL). This new algorithm
+    embeds the sorting logic in a new object that is derived from the
+    <code>MultiThreadCell</code> template, but takes advantage of certain
+    properties of <code>MultiThreadCell</code> that the previous algorithms
+    did not, specifically <code>current_position</code> and
+    <code>ideal_position</code>.</p>
+<p>When each <code>SelectionSortCell</code> is created the
+    <code>ideal_position</code> property is initialized to 0, and the
+    <code>current_position</code> property is set to the initial index of
+    the cell in the list. When the sorting process begins, the Python
+    scheduler selects an element at random to execute. That element compares
+    its own value to that of the target element found at the selected
+    element's <code>ideal_position</code> in the list (which has been
+    initialized to 0). If the selected cell's value is less than the target
+    cell's value, the selected element swaps positions with the target
+    element. No change is made to either cell's <code>ideal_position</code>.
+    If the value of the selected cell is greater than or equal to the value
+    of the target cell, no change in order is made, however the
+    <code>ideal_position</code> of the selected element is incremented. At
+    this point the element process stops executing and the Python scheduler
+    selects a new cell to execute.</p>
+<p>Note that for this algorithm to work, every
+    <code>SelectionSortCell</code> object must have visibility into the
+    global element list. Note also that each cell also maintains some state,
+    which is the index of the last element it compared itself to (the new
+    <code>ideal_position</code>).</p>
+<p>Eventually, the cell having the smallest value will migrate to index
+    0 and will maintain its <code>ideal_position</code> of 0. Every other
+    element's <code>ideal_position</code> will increase monotonically when
+    compared to that element at index 0, and once incremented that element
+    will never again compare itself to the element at index 0. The Python
+    scheduler may repeatedly attempt to activate a cell, but given its state
+    it will never move to the left of its <code>ideal_position</code>.</p>
+<p>As the <code>ideal_position</code> of any given cell increases, the
+    cell can never move to the left of that position, although the action of
+    other cells may cause it to jump to the right. Over time the element may
+    move back left towards the former <code>ideal_position</code>, or the
+    <code>ideal_position</code> may continue to "drift" to the right, but
+    the element will never move to the left of its
+    <code>ideal_position</code>.</p>
+<p>This implementation shares more in common with a traditional
+    Insertion sort than a Selection sort, but its stochastic nature and
+    non-adjacent swaps puts it in its own category. Because the algorithm
+    relies on global awareness of the list and local awareness of its
+    perceived boundary, and because the local boundary drifts rightward to
+    its final position, I will refer to this algorithm as a
+    <strong>Randomized Stateful Drift</strong> sort (RSD).</p>
+<p>Here is an example of how this RSD algorithm would behave on the
+    array we saw earlier. I have included a second value in each element to
+    represent its ideal_position:</p>
+<p><code>[(14,0), (81,0), (03,0), (94,0), (35,0), (31,0), (28,0), (17,0), (94,0), (13,0)]</code>.</p>
+<p>When element 2 (<code>03,0</code>) is executed it will compare itself
+    to the element at index 0. Because element 2 is less that element 0 the
+    two values will be swapped leading to a list of:</p>
+<p><code>[(03,0), (81,0), (14,0), (94,0), (35,0), (31,0), (28,0), (17,0), (94,0), (13,0)]</code>.</p>
+<p>When element 4 (<code>35,0</code>) is executed it will compare itself
+    to the element at index 0 (<code>03,0</code>). Because element 4 is
+    larger than element 0, no swap will occur, but the selected element's
+    <code>ideal_position</code> will be incremented and the list will now
+    be:</p>
+<p><code>[(03,0), (81,0), (14,0), (94,0), (35,1), (31,0), (28,0), (17,0), (94,0), (13,0)]</code>.</p>
+<p>Should element 4 (<code>35,1</code>) be selected again it will now
+    compare itself to the element at index 1 (<code>81,0</code>), discover
+    it is smaller, and swap positions. Now the list is:</p>
+<p><code>[(03,0), (35,1), (14,0), (94,0), (81,0), (31,0), (28,0), (17,0), (94,0), (13,0)]</code>.</p>
+<p>Should element 4 be selected 4 more times in sequence the new list
+    will be:</p>
+<p><code>[(03,0), (35,1), (14,0), (81,3), (94,0), (31,0), (28,0), (17,0), (94,0), (13,0)]</code>,</p>
+<p>and element 4 will never again attempt a comparison or swap with
+    indices 0-2.</p>
+<h2 id="appendix-b">Appendix B. - Performance metrics</h2>
+<p>This appendix interprets the efficiency results in light of the
+    reproduced measurements, the authors' published claims, and the behavior
+    implied by the accompanying efficiency graphics.</p>
+<h3 id="summary-of-empirical-findings">Summary of empirical
+    findings</h3>
+<p>Across 100 paired trials on identical initial arrays, the standard
+    implementations exhibit the expected relative ordering: Selection sort
+    is fastest in time and lowest in swaps, Insertion  sort is intermediate,
+    and Bubble sort is slowest. Expected swap counts for Bubble and
+    Insertion  sorts (~2436) match the inversion-count expectation for random
+    permutations of size 100, while Selection sort swaps remain near n−1
+    (~94). Comparison counts align with implementation style: optimized
+    Bubble ~4.9k, naive Bubble ~8.8k, Insertion  ~2.5k, Selection ~5.0k. In
+    contrast, the reimagined variants show substantially higher execution
+    time and comparison counts: RPE comparisons ~9.3k, RSD ~6.1k, and RPX
+    ~109k, with RPX time costs orders of magnitude larger than the
+    traditional Insertion sort baseline.</p>
+<h4 id="moves-only">Implications for the "active moves only" claim</h4>
+<p>The reproduced swap counts for Bubble vs. RPE are identical across
+    paired trials, which supports equivalence under a swaps-only metric for
+    the Bubble/RPE pair. The published figure for swaps-only efficiency
+    therefore appears plausible if and only if swaps were the sole metric
+    plotted in that panel.</p>
+<h4 id="comparisons-plus">Implications for the "comparisons plus moves" claim</h4>
+<p>When comparisons are included, the reproduced data contradict the
+    claim that the cell-view Bubble sort variant is more efficient. RPE requires
+    roughly 2× the comparisons of the optimized Bubble sort baseline and more
+    than the naive Bubble sort baseline as well. Because swaps are equal and
+    comparisons are higher, the combined cost metric must be higher for RPE
+    under any additive model of "sensing plus acting", This conflicts with
+    the reported direction of effect in the authors' text for Bubble and
+    Insertion sorts.</p>
+<h4 id="baseline-choice">Role of baseline implementation choice</h4>
+<p>The bubble comparison counts in the authors' graphic appear closer to
+    a naive full-pass Bubble sort implementation than to an optimized
+    shrinking-bound implementation. The reproduced naive Bubble sort comparison
+    count (~8.8k) is consistent with the chart scale, whereas the optimized
+    Bubble sort (~4.9k) is not. This suggests the published baseline may have
+    been a naive variant. If so, efficiency conclusions are conditional on
+    that specific baseline choice and do not generalize to standard
+    optimized forms.</p>
+<h4 id="non-equivalencen">Algorithmic non-equivalence in the "selection"
+    comparison</h4>
+<p>The RSD procedure described in code does not implement classical
+    Selection sort semantics. In classical Selection sort, each pass
+    identifies the minimum element in the unsorted suffix and performs at
+    most one swap. In the RSD design, each element repeatedly compares
+    itself to a moving "ideal index" and may swap whenever an inversion is
+    detected, without first selecting a global minimum candidate. This
+    permits many more swaps and different comparison dynamics. Therefore,
+    the comparison between RSD and classical Selection sort is not
+    algorithm-to-algorithm but rule-set to algorithm, and the efficiency
+    contrast is not like-for-like.</p>
+<h4 id="consequences">Consequences for the Selection-sort efficiency claim</h4>
+<p>Because the procedures are not algorithmically equivalent, reported
+    efficiency differences for "selection" reflect design divergence rather
+    than distributed vs. traditional control structure. The close agreement
+    between reproduced comparison counts (traditional ~5044, RSD ~6127) and
+    the published graphic supports that the figure is measuring these
+    non-equivalent processes as if they were counterparts. Any claim of
+    reduced or increased efficiency for "cell-view selection sort" is
+    therefore methodologically ambiguous.</p>
+<h4 id="interpretation-of-rpx">Interpretation of RPX vs. Insertion  results</h4>
+<p>RPX comparison counts are extremely high (~109k) while swaps match
+    inversion counts. This is consistent with a rule in which an element
+    only moves when a left prefix is already locally ordered, causing many
+    failed selection attempts before a valid move occurs. If prefix-order
+    checks are not fully counted as comparisons in the instrumentation,
+    measured comparisons may still understate true sensing cost. The large
+    runtime and comparison gap relative to Insertion  sort indicates
+    non-equivalent operational structure rather than a slower implementation
+    of the same algorithm.</p>
+<h4 id="statistical-claim-plausibility">Statistical claim
+    plausibility</h4>
+<p>Reported z-statistics with magnitudes near 70 for n=100 trials imply
+    extremely large standardized mean differences with low variance. The
+    reproduced paired results for Bubble vs. RPE comparisons show
+    differences in the opposite direction. Under a paired analysis, such
+    extreme z values would not arise with these means and variances. This
+    suggests either different measurement definitions, different baselines,
+    or different pairing structure in the original analysis.</p>
+<h4 id="conclusion">Conclusion</h4>
+<p>The reproduced data support swaps-only equivalence between
+    traditional Bubble and RPE sorts, but do not support superiority of the
+    cell-view variants when comparisons are included. At least one of the
+    published efficiency comparisons (Selection vs. RSD) evaluates
+    non-equivalent procedures, making the conclusion potentially misleading
+    (established fact). The most likely explanation for the discrepancy
+    between published and reproduced efficiency claims is a combination of
+    baseline implementation choice and metric instrumentation differences
+    rather than a demonstrated intrinsic efficiency advantage of the
+    cell-view architecture.</p>
+<h2 id="appendix-c">Appendix C &mdash; Methodology, Instrumentation,
+    and Verification Limits</h2>
+<p>This appendix documents the experimental methodology, code
+    reconstruction steps, measurement instrumentation, and verification
+    limits associated with the independent evaluation of the reported
+    cell-view sorting algorithms. Its purpose is to make explicit which
+    results are directly measured, which are derived from established
+    algorithmic properties, and which conclusions depend on constrained
+    inference due to gaps in the available materials.</p>
+<h4
+        id="repository-condition-and-reproducibility-constraints.">Repository
+    Condition and Reproducibility Constraints.</h4>
+<p>The public repository associated with the paper is incomplete with
+    respect to runnable baseline implementations of the traditional sorting
+    algorithms referenced in the text. Several scripts are non-executable as
+    published, and multiple referenced components are absent or inconsistent
+    with current module definitions. As a result, baseline traditional
+    Bubble, Insertion, and Selection sorts used in this evaluation were
+    independently implemented to match canonical algorithm definitions.</p>
+<h4 id="baseline-algorithm-definitions.">Baseline Algorithm
+    Definitions.</h4>
+<p>Traditional Bubble, Insertion, and Selection sorts were implemented
+    using standard array-based formulations consistent with established
+    literature. Expected swap and comparison counts were cross-checked
+    against known analytical expectations. A separate naive Bubble variant
+    was also implemented which scans the full array each pass without
+    tail-shortening optimization, to test sensitivity to termination
+    strategy.</p>
+<h4 id="cell-view-algorithm-reconstruction.">Cell-View Algorithm
+    Reconstruction.</h4>
+<p>Cell-view variants (RPE, RSD, RPX) were reconstructed from available
+    scripts and paper descriptions where execution was not directly
+    possible. Where behavior was ambiguous, the simplest interpretation
+    consistent with the published pseudo logic and comments was selected.
+    These reconstruction choices are documented inline in the evaluation
+    code and constitute probabilistic inferences.</p>
+<h4 id="test-harness-and-pairing-design.">Test Harness and Pairing
+    Design.</h4>
+<p>Each trial used a fixed pseudo-random permutation of 100 elements.
+    For paired comparisons, the same initial array instance was supplied to
+    each algorithm variant within a trial index. Trials were independent
+    across indices. This supports paired statistical comparison and reduces
+    input-distribution variance.</p>
+<h4 id="metrics-captured.">Metrics Captured.</h4>
+<p>Instrumentation recorded elapsed time, swap counts, and comparison
+    counts. Comparison counts include all explicit element-to-element order
+    checks executed by the algorithm logic. For "cell-view" variants,
+    comparisons performed during candidate reselection and local sensing
+    were also included where observable. Any comparisons embedded in opaque
+    helper routines may be undercounted; this is a localized
+    uncertainty.</p>
+<h4 id="termination-semantics.">Termination Semantics.</h4>
+<p>Several cell-view scripts lack intrinsic termination criteria and
+    rely on external sortedness checks or manual interruption. All
+    experiments therefore used an external inversion count predicate to
+    determine completion. This alters control structure relative to pure
+    in-algorithm termination and is necessary to accommodate the usage of
+    the sorting elements derived from the authors'
+    <code>MultiThreadCell</code> template.</p>
+<h4 id="efficiency-claim-evaluation-limits.">Efficiency Claim Evaluation
+    Limits.</h4>
+<p>Because the paper does not publish full raw datasets, exact
+    instrumentation definitions, or executable baselines, statistical claims
+    (including reported Z-test values) cannot be independently reproduced
+    from primary sources. Any agreement between measured aggregates and
+    published figures is therefore corroborative but not confirmatory.</p>
+<h4 id="error-tolerance-claim-evaluation-limits.">Error Tolerance Claim
+    Evaluation Limits.</h4>
+<p>The paper's frozen-cell experiments lack an operational definition of
+    the fault injection mechanism, monotonicity error metric, and baseline
+    implementations. No runnable traditional algorithms with frozen-cell
+    handling are provided. Consequently, error-tolerance comparisons cannot
+    be replicated from the supplied materials. Conclusions regarding
+    comparative robustness are therefore unverified.</p>
+<h4 id="scope-of-conclusions.">Scope of Conclusions.</h4>
+<p>All quantitative tables in this rebuttal reflect measured results
+    under the reconstructed harness described above. Interpretive
+    conclusions are limited to efficiency and cost metrics under those
+    conditions. Broader claims regarding emergent or basal intelligence are
+    out of scope for these measurements and are not tested here.</p>
+<h2 id="appendix-d">Appendix D &mdash; Analysis of <code>freezing_sorting_analysis.py</code></h2>
+<p><code>freezing_sorting_analysis.py</code> begins by setting up the
+    execution environment. Conceivably it could run the suite of test across
+    all three multithreaded sorting variations, but as implemented it tests
+    only the RPE (Random Pair Exchang) sort. The setup runs each experiment
+    20 times, and each group of experiments is run using 1, 2, or 3 "frozen"
+    cells, for a total of 60 separate experiments.</p>
+<p>A single experiment begins by creating a random list of 100 integers,
+    each of which has a value between 0 and 10. As will be seen later, this
+    choice of values creates a large number of duplicate values which has a
+    significant impact on the evaluation of the sorting algorithm. The array
+    is shuffled, a step which is unnecessary when dealing with a randomly
+    generated array, and which is apparently left over from test runs where
+    the array was a fixed array and needed to be randomized. The script then
+    builds an array of <code>BubbleSortCell</code> elements where the value
+    of each element corresponds to a value in the randomized integer array.
+    Each cell is also assigned a value corresponding to its position in the
+    array, a reference to the array of which it is a part, and a reference
+    to a global thread lock variable, among other things. Most of the other
+    assignments are not used in this test script; they are required by the
+    <code>BubbleSortCell</code> objects only when used in other scripts.</p>
+<p>In the last step of array initialization 1, 2 or 3 elements are
+    randomly selected to be "frozen", and those cells' statuses are set to
+    FREEZE; no record is kept of which cells were selected to be
+    "frozen".</p>
+<p>The master control program then starts each element by calling its
+    <code>start()</code> method, which adds it to the list of threads
+    controlled by the Python threading module. As noted earlier, the RPE
+    algorithm does not provide a mechanism for determining when a list
+    becomes sorted, so after the cell threads are started the control
+    process (which is also a thread) enters a tight loop where it repeatedly
+    checks to see if the list is sorted and pauses for one second <a
+        href="#fn16" class="footnote-ref" id="fnref16"><sup>16</sup></a>
+    if it is not. When the list becomes sorted the control process goes
+    through the list of cells marking each as "INACTIVE", which causes
+    each cell element to terminate naturally.</p>
+<p>Once an experiment is concluded some minimal performance data is
+    collected and the next experiment begins. Once a group of experiments
+    concludes this performance data is printed to the console, and after all
+    groups have concluded the script ends.</p>
+<p>Before concluding, we should to examine how fault tolerance is
+    realized in this base implementation. Two code class templates are
+    particularly relevant.</p>
+<p>As implemented, <code>freezing_sorting_analysis.py</code> runs tests
+    using only the RPE (<code>BubbleSortCell</code>) algorithm. Commented
+    code in that script would allow a tester to run the script using other
+    of the three "cell-view" algorithms (RPE, RPX or RSD), but doing so
+    would require some modifications to the script itself.</p>
+<p>In the RPE implementation (used by default), the method that
+    determines whether a cell may initiate movement explicitly allows
+    interactions with frozen cells. A cell is permitted to attempt a swap
+    not only when both participants are ACTIVE, but also when the target
+    cell has a status of "FREEZE". Thus, while frozen cells are restricted
+    in their ability to initiate actions, they remain eligible participants
+    in comparisons and exchanges initiated by other cells.</p>
+<p>Similar to the RPE algorithm, in the RPX
+    (<code>InsertionSortCell</code>) implementation, frozen cells are
+    restricted only in their ability to initiate swaps. They cannot initiate
+    a move themselves, but they may still be swapped if another active cell
+    initiates the operation. This behavior follows directly from the shared
+    <code>MultiThreadCell.swap()</code> template logic.</p>
+<p>Before an RPX cell attempts a swap, it performs a prefix-sortedness
+    test. When a cell at position <code>n</code> is selected for execution,
+    it scans the sublist from index 0 through index <em>n−1</em>. The scan
+    compares each element with the previous element to determine whether the
+    prefix is sorted. If any value is found that is less than its
+    predecessor, the prefix is classified as unsorted and no swap is
+    attempted.</p>
+<p>When the scan encounters a frozen cell during this process it treats
+    that cell as a boundary rather than as normal participant in the
+    ordering check. The frozen cell is skipped, and the comparison baseline
+    ("previous value") is reset to the element immediately to its right.
+    Operationally, this divides the prefix into two segments and restarts
+    the sortedness test to the right of the frozen cell.</p>
+<p>For purposes of prefix validation, a frozen element partitions the
+    list. The left sublist will become increasingly more sorted over time,
+    but because the sortedness test always begins at index 0, until the left
+    sublist is fully sorted up to the frozen cell the right sublist cannot
+    meaningfully progress, as the sortedness test will otherwise fail before
+    the frozen cell is encountered. If the right sublist remains sorted up
+    to the selected cell at index <code>n</code>, the cell is allowed to
+    initiate a swap.</p>
+<p>Although frozen cells cannot initiate swaps, they may still be
+    displaced. If an active cell immediately to the right of a frozen cell
+    is selected and is out of order, it may swap with the frozen cell. In
+    that case the frozen cell moves one position to the right. Over repeated
+    iterations, this allows the frozen cell to migrate leftward, but only
+    after the left segment has been re-sorted.</p>
+<p>As an example, consider the following list with one frozen cell
+    (F):</p>
+<pre>[08, 03, 06, 02(F), 05, 07].</pre>
+<p>When position 5 (value 07) is selected, the prefix scan begins by
+    comparing the values at index 0 (08) and 1 (03); it detects disorder and
+    thus no move is attempted. In face, no cell to the right of index 1 (03)
+    can move until that cell has been selected and moved.</p>
+<p>When index 1 is finally selected it will swap with index 0,
+    producing:</p>
+<pre>[03, 08, 06, 02(F), 05, 07]</pre>
+<p>Once the left segment is fully sorted, the right list can become
+    sorted. As it is already sorted, no state change will occur until the
+    selection process selects the cell at index 4 (05). When this happens
+    the list will be:</p>
+<pre>[03, 06, 08, 02(F), 05, 07].</pre>
+<p>Because a candidate element only compares to its left, and only swaps
+    if it's value is less than its left neighbor, the value <code>05</code>
+    cannot move left across <code>02(F)</code>. The algorithm will stall in
+    this partially ordered configuration</p>
+<hr/>
+<h2 style="text-align:center">Footnotes</h2>
+<section id="footnotes" class="footnotes">
+
+    <div id="fn1">&nbsp;<a href="#fnref1">&nbsp;1.</a>&nbsp;
+        Taining Zhang, Adam Goldstein, and M. Levin, <cite>Classical
+        Sorting Algorithms as a Model of Morphogenesis: Self-sorting Arrays
+        Reveal Unexpected Competencies in a Minimal Model of Basal
+        Intelligence</cite>, Adaptive Behavior 33, no 1 (2024): 25&ndash;54,
+        doi:10.1177/10597123241269740. Page 8.
+    </div><br/>
+
+    <div id="fn2">&nbsp;<a href="#fnref2">&nbsp;2.</a>&nbsp;
+        Classical sorting algorithms are defined in terms of
+        logical state transitions. While many textbook implementations use
+        centralized control structures (loops or recursion) to manage these
+        transitions, the abstract algorithms themselves do not require such
+        control; they can be recast in decentralized or parallel forms without
+        altering the sequence of state transitions. Thus, framing classical
+        sorting as inherently centralized is a matter of implementation style,
+        not algorithmic necessity
+    </div><br/>
+
+    <div id="fn3">&nbsp;<a href="#fnref3">&nbsp;3. </a>&nbsp;
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite> Page 2.
+    </div><br/>
+
+    <div id="fn4"><a href="#fnref4">&nbsp;4.</a>
+        <blockquote>Morris, A. (2025, November 13), The Secret Life Of Algorithms,
+            <cite><a href="https://www.forbes.com/sites/andreamorris/2025/11/13/the-secret-life-of-algorithms/">Forbes</a></cite><br/>
+        Shikha. (2025, December 7). "The Bioelectric Mind: Michael Levin's
+            Radical Vision of Life as Scalable Intelligence"<cite>,
+                <a href="https://medium.com/%40rani.shikha/the-bioelectric-mind-michael-levins-radical-vision-of-life-as-scalable-intelligence-ed80055bd8c9">Medium</a></cite><br/>
+        Yadda, L.F. (2025, June 9), <cite><a
+                href="https://lfyadda.com/cognitive-kin-and-emergent-reasoningfrom-bubble-sort-arrays-to-billion-parameter-language-models/">Cognitive
+            Kin and Emergent Reasoning:From Bubble-Sort Arrays to Billion-Parameter Language Models</a></cite>,<br/>
+        Wegner, A. (2025, October 21). "Michael Levin's Platonic biology: A critical review." <cite><a
+                href="https://medium.com/%40AIchats/michael-levins-platonic-biology-fcadcb67c3bf">Medium.</a></cite></blockquote>
+    </div><br/>
+    <div id="fn5"><a href="#fnref5"> 5. </a>
+         Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, page 4.
+    </div><br/>
+
+    <div id="fn6"><a href="#fnref6"> 6.</a>&nbsp;
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, page 8</div><br/>
+
+    <div id="fn7"><a href="#fnref7">7.</a>
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, Page 11.
+        The authors state that their model was implemented using Python 3.0
+        This version, released in 2008, was a foundational but notoriously
+        unstable "clean break" from Python 2.x and was never widely adopted
+        for scientific computing. Most critical libraries (including early
+        versions of NumPy or the <code>collections.abc</code> module cited
+        in their code) were only made stable in Python 3.1 or 3.2. Given that
+        the repository utilizes syntax and library structures (such as
+        <code>collections.abc</code>) that were not standard or were non-functional
+        in the 3.0 release, it is highly probable that the authors utilized a
+        much later, more stable iteration (e.g., 3.3+) and inadvertently
+        misreported the environment.
+    </div><br/>
+
+    <div id="fn8"><a href="#fnref8">8.</a>
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, page 8</div><br/>
+
+    <div id="fn9"><a href="#fnref9"> 9. </a>
+        Concurrency is about <em>dealing with</em> lots of
+        things at once; parallelism is about <em>doing</em> lots of things at
+        once.
+    </div><br/>
+
+    <div id="fn10"><a href="#fnref10">10.</a>
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, Page 11
+    </div><br/>
+
+    <div id="fn11"><a href="#fnref11">11.</a>
+        Zhang, et al., <cite>Algorithms as a Model of Morphogenesis</cite>, Page 11
+    </div><br/>
+
+    <div id="fn12">&nbsp;<a href="#fnref12">12.</a>&nbsp;
+        Knuth, D. E. (1998). <cite>The Art of Computer Programming,
+            Volume 3: Sorting and Searching</cite> (2nd ed.,Addison-Wesley),
+        pp. 106-110). Knuth demonstrates that the expected number of passes
+        for a random permutation is approximately n - sqrt(pi*n/2),
+        or 87.5 for a 100 element array.<br/>
+        Bóna, M. (2012). <cite>Combinatorics of Permutations</cite>. pg. 129-130
+    </div><br/>
+
+    <div id="fn13"><a href="#fnref13">13.</a>
+        Monotonicity describes a function or sequence that moves in one
+        consistent direction&mdash;either entirely non-increasing or
+        non-decreasing&mdash;as its input increases. A monotonically increasing
+        function never decreases (values stay same or increase), while a
+        monotonically decreasing function never increases. It indicates a
+        consistent, unidirectional relationship, often used to determine
+        convergence in analysis. "Monotonicity error" counts instances where
+        this pattern is broken in data analysis. The method used in the
+        published codebase, <code>get_monotonicity()</code>, measures the
+        proportion of adjacent non-decreasing relationships within a single
+        static array. This value may be used to calculate monotonicity error, as
+        when an array becomes more sorted, then less sorted, then more sorted
+        again, but that is not the returned value of this method.
+    </div><br/>
+
+    <div id="fn14"><a href="#fnref14">14.</a>
+        I intentionally skip discussing those portions of the
+        code whose only purpose is logging or visualization of results. I would
+        also note that there is a significant amount of code which is commented
+        out; uncommenting some of this code could lead to behavioral changes in
+        the script. Discussion of these possible variations is deferred.
+    </div><br/>
+
+    <div id="fn15"><a href="#fnref15">15.</a><br/>
+        Dijkstra, E. W. (1974). <cite>Self-stabilizing systems
+            in spite of distributed control.</cite> (1974),<br/>
+        Mittal, N.,&amp; Garg, V. K. (2005). <cite>Fault-tolerant termination
+            detection in distributed systems.</cite> (2005).<br/>
+        These works analyze precisely the distinction between local faults and
+            global termination guarantees.
+    </div><br/>
+
+    <div id="fn16"><a href="#fnref16">16</a>
+        In computer processes one second is quite a long time
+        (the Python threading module will do about 200 thread switches in one
+        second) so once a list becomes sorted each element may "spin" for
+        hundreds of cycles before it receives the termination signal. There is
+        also an emergency exit in the loop where it will abort if 40 seconds
+        goes by without achieving "sortedness."</div>
+</section>
