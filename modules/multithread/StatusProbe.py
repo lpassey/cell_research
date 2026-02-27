@@ -5,18 +5,22 @@ class StatusProbe:
         self.cell_types = []
         self.frozen_swap_attempts = 0
         self.compare_and_swap_count = 0
+        self.comparisons = 0;
 
-    def record_swap(self):
+    def record_swap(self):      # called by MultiThreadCell.swap()
         self.swap_count += 1
-        
-    def record_compare_and_swap(self):
+
+    def record_compare_and_swap(self):  # called by BubbleSortCell.move when should_move
         self.compare_and_swap_count += 1
 
     def record_sorting_step(self, snapshot):
         self.sorting_steps.append(snapshot)
-    
+
     def record_cell_type(self, snapshot):
         self.cell_types.append(snapshot)
-    
+
     def count_frozen_cell_attempt(self):
         self.frozen_swap_attempts += 1
+
+    def count_comparison(self):
+        self.comparisons += 1
