@@ -1,7 +1,4 @@
-
-import threading
-import time
-from .MultiThreadCell import MultiThreadCell, CellStatus
+from modules.multithread.MultiThreadCell import MultiThreadCell, CellStatus
 from .CellGroup import GroupStatus
 import random
 
@@ -15,25 +12,26 @@ class InsertionSortCell(MultiThreadCell):
     def within_boundary(self, pos):
         if pos[0] > self.right_boundary[0] or pos[1] > self.right_boundary[1]:
             return False
-        
+
         if pos[0] < self.left_boundary[0] or pos[1] < self.left_boundary[1]:
             return False
 
         return True
 
     def should_move(self):
+        self.status_probe.count_comparison()
         if self.reverse_direction:
             bigger_than_left = False
             if self.current_position[0] > self.left_boundary[0]:
-                bigger_than_left = self.value > self.cells[int(self.current_position[0] - 1)].value and self.cells[int(self.current_position[0] - 1)].status ==  CellStatus.ACTIVE 
-            
+                bigger_than_left = self.value > self.cells[int(self.current_position[0] - 1)].value and self.cells[int(self.current_position[0] - 1)].status ==  CellStatus.ACTIVE
+
             return self.is_enable_to_move() and bigger_than_left
             #return bigger_than_left
-        
+
         smaller_than_left = False
         if self.current_position[0] > self.left_boundary[0]:
-            smaller_than_left = self.value < self.cells[int(self.current_position[0] - 1)].value and self.cells[int(self.current_position[0] - 1)].status ==  CellStatus.ACTIVE 
-            
+            smaller_than_left = self.value < self.cells[int(self.current_position[0] - 1)].value and self.cells[int(self.current_position[0] - 1)].status ==  CellStatus.ACTIVE
+
         return self.is_enable_to_move() and smaller_than_left
         #return smaller_than_left
 
@@ -53,7 +51,7 @@ class InsertionSortCell(MultiThreadCell):
             #     print("xxxxxxxxxxxxxxx2")
             err_happen = random.random() < 0
             if err_happen:
-                return not self.value > self.cells[int(target_position[0])].value 
+                return not self.value > self.cells[int(target_position[0])].value
             # if self.cells[int(target_position[0])].status == CellStatus.FREEZE:
             #     print("xxxxxxxxxxxxxxx3")
             if self.reverse_direction:
@@ -64,7 +62,7 @@ class InsertionSortCell(MultiThreadCell):
         #         print(target_position)
         #     if self.within_boundary(target_position):
         #         print(self.status)
-        
+
     def is_enable_to_move(self):
         if self.reverse_direction:
             prev = 100000
@@ -76,21 +74,21 @@ class InsertionSortCell(MultiThreadCell):
                 continue
             if self.reverse_direction and self.cells[i].value > prev:
                 return False
-            
+
             if not self.reverse_direction and self.cells[i].value < prev:
                 return False
             prev = self.cells[i].value
         return True
-    
+
     def move(self):
-        self.lock.acquire()
+#        self.lock.acquire()
         if not self.is_enable_to_move():
-            self.lock.release()
+#            self.lock.release()
             return
-        
+
         if self.should_move():
             self.status_probe.record_compare_and_swap()
-        
+
         if self.group.status == GroupStatus.SLEEP and self.status != CellStatus.MOVING:
             self.status = CellStatus.SLEEP
         target_position = (self.current_position[0] - self.cell_vision, self.current_position[1])
@@ -98,5 +96,5 @@ class InsertionSortCell(MultiThreadCell):
         #         print("xxxxxxxxxxxxxxx4")
         if self.should_move_to(target_position):
             self.swap(target_position)
-        self.lock.release()
+#        self.lock.release()
 
