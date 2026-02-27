@@ -39,8 +39,8 @@ class MultiThreadCell(threading.Thread):
         self.target_position = current_position
         self.cells = cells
         self.lock = lock
-        self.left_boundary = left_boundary
-        self.right_boundary = right_boundary
+        self.left_boundary = left_boundary  #because this object has a cells array, this boundary is probably irrelevant.
+        self.right_boundary = right_boundary      #because this object has a cells array, this boundary is probably irrelevant.
         self.cell_vision = cell_vision
         self.status = CellStatus.ACTIVE
         self.previous_status = CellStatus.ACTIVE
@@ -57,10 +57,10 @@ class MultiThreadCell(threading.Thread):
         }
         self.reverse_direction=reverse_direction
         self.with_lock = False
-        
+
     def take_snapshot(self):
         return [c.value for c in self.cells], [[c.group.group_id, self.cell_type_dict[c.cell_type] if c.label == 0 else c.label, c.value, 1 if c.status == CellStatus.FREEZE else 0] for c in self.cells]
-    
+
     def get_current_snapshot(self):
         return {"value": self.value, "group id": self.group.group_id, "group status": self.group.status, "cell status": self.status, "left": self.left_boundary, "right": self.right_boundary, "cell_type": self.cell_type, "should_move": self.should_move(), "with_lock": self.with_lock}
 
@@ -76,7 +76,7 @@ class MultiThreadCell(threading.Thread):
                 self.status_probe.count_frozen_cell_attempt()
                 self.tried_to_swap_with_frozen = True
             return
-        self.tried_to_swap_with_frozen = False 
+        self.tried_to_swap_with_frozen = False
         current_cell_at_target.tried_to_swap_with_frozen = False
         self.status = CellStatus.MOVING
         current_cell_at_target.status = CellStatus.MOVING
@@ -100,7 +100,7 @@ class MultiThreadCell(threading.Thread):
     def update(self):
         pass
 
-    
+
     def move(self):
         pass
 
@@ -110,4 +110,6 @@ class MultiThreadCell(threading.Thread):
 
     def run(self):
         while self.status != CellStatus.INACTIVE:
-            self.move()
+            with self.lock:
+                self.move()
+            time.sleep( .0005 )
